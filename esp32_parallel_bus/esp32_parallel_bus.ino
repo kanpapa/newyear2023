@@ -1,0 +1,124 @@
+//
+// ESP32 parallel bus control for HDSP-2121 5x7dots x 8cols LED Display
+//
+// 2023/1/1 Kazuhiro Ouchi @kanpapa
+//
+
+#define GPIO_OUT  *(volatile uint32_t *)0x3FF44004
+#define GPIO_OUT_W1TS *(volatile uint32_t *)0x3FF44008
+#define GPIO_OUT_W1TC *(volatile uint32_t *)0x3FF4400C
+
+// UDC RAM data
+const byte dotdata[16][7] = {
+  {0x1B,0x12,0x12,0x1F,0x15,0x1B,0x1F},   // rabbit1
+  {0x0A,0x0A,0x0E,0x15,0x1F,0x11,0x0E},   // rabbit2
+  {0x1f,0x1e,0x1c,0x18,0x18,0x1c,0x1e},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1B,0x12,0x12,0x1F,0x15,0x1F,0x1B},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10},
+  {0x1f,0x10,0x10,0x1e,0x10,0x10,0x10}
+};
+
+// 2023 NEW YEAR MESSAGES
+const byte msg[7][8] = {
+  {0x00,0x31,0x39,0x4f,0x3c,0x43,0x00,0x00},  // アケマシテ
+  {0x00,0x35,0x52,0x43,0x5e,0x44,0x33,0x00},  // オメデトウ
+  {0x3a,0x5e,0x3b,0x5e,0x32,0x4f,0x3d,0x00},  // ゴザイマス
+  {0x80,0x00,0x12,0x10,0x12,0x13,0x00,0x80},  // 2023
+  {0x00,0x68,0x61,0x70,0x70,0x79,0x00,0x00},  // HAPPY
+  {0x6e,0x65,0x77,0x00,0x79,0x65,0x61,0x72},  // YEAR
+  {0x81,0x00,0x12,0x10,0x12,0x13,0x00,0x81}   // 2023
+};
+
+// Global vars
+uint16_t data;
+uint16_t adrs;
+
+// Write the Register
+void write_reg(uint16_t adrs, uint16_t data, uint8_t a3, uint8_t a4) {
+  // Set bit
+  GPIO_OUT_W1TS = (data << 12) | (adrs << 21) ; // D0-D7
+  digitalWrite(25, a3);   // A3
+  digitalWrite(26, a4);   // A4
+
+  digitalWrite(5, LOW);   // ~WR
+  delay(1);
+  digitalWrite(5, HIGH);
+  delay(1);
+
+  // Clear bit
+  GPIO_OUT_W1TC = (data << 12) | (adrs << 21) ; // D0-D7
+}
+
+void setup() {
+  pinMode(4, OUTPUT); // ~RST
+  pinMode(5, OUTPUT); // ~CE,~WR
+
+  pinMode(12, OUTPUT);  // D0
+  pinMode(13, OUTPUT);  // D1
+  pinMode(14, OUTPUT);  // D2
+  pinMode(15, OUTPUT);  // D3
+  pinMode(16, OUTPUT);  // D4
+  pinMode(17, OUTPUT);  // D5
+  pinMode(18, OUTPUT);  // D6
+  pinMode(19, OUTPUT);  // D7
+
+                        // XX
+  pinMode(21, OUTPUT);  // A0
+  pinMode(22, OUTPUT);  // A1
+  pinMode(23, OUTPUT);  // A2
+  
+                        // XX
+  pinMode(25, OUTPUT);  // A3
+  pinMode(26, OUTPUT);  // A4
+  pinMode(27, OUTPUT);  // ~FL
+
+  // INIT ESP32 PORT
+  digitalWrite(4, HIGH);  // ~RESET
+  digitalWrite(5, HIGH);  // ~CE, ~WR
+  digitalWrite(27, HIGH); // ~FL
+  delay(1);
+  
+  // Display Reset
+  digitalWrite(4, LOW);   // ~RESET
+  delay(1);               // wait
+  digitalWrite(4, HIGH);  // ~RESET
+  delay(1);               // wait
+
+  // Setup the Control Word Register
+  data = 0;
+  adrs = 0;
+  write_reg(adrs, data, LOW, HIGH);
+
+  // Load to the UDC RAM
+  for (int udc = 0 ; udc < 16 ; udc++){
+    write_reg(0, udc, LOW, LOW);  // UDC Address Register
+
+    for (adrs = 0 ; adrs < 7 ; adrs++){
+      write_reg(adrs, dotdata[udc][adrs], HIGH, LOW); // UDC RAM Register
+    }
+  }
+
+  // initrize global var
+  data = 0;
+  adrs = 0;
+}
+
+void loop() {
+  for (int msg_num = 0; msg_num < 7 ; msg_num++){
+    for (adrs = 0 ; adrs < 8 ; adrs++){
+      // Write the Character RAM
+      write_reg(adrs, msg[msg_num][adrs], HIGH, HIGH);
+      delay(200);
+    }
+  }
+}
